@@ -1,0 +1,74 @@
+# -----------------------------------------------------------
+# Example user definition
+# -----------------------------------------------------------
+# Place one .yaml file per user in this directory.
+# Each file defines a single user (no list wrapper needed).
+#
+# Available fields:
+#   username    — login name (required)
+#   uid         — numeric UID (optional)
+#   gid         — numeric GID for primary group (optional)
+#   group       — primary group (optional, defaults to username)
+#   groups      — supplementary groups (optional)
+#   shell       — login shell (optional, uses role default)
+#   home        — home directory (optional, auto-generated)
+#   comment     — GECOS / full name (optional)
+#   password    — hashed password (optional — use ansible vault). If omitted, a secure
+#                 random password will be generated and hashed automatically.
+#                 To manually generate a hash: `ansible all -i localhost, -m debug -a "msg={{ 'mypassword' | password_hash('sha512', 'mysecretsalt') }}"`
+#   system      — boolean, create as system account (optional)
+#   ssh_keys    — list of public key strings (optional)
+#   sudo        — boolean, add to sudo group (optional)
+#   sudoers     — dict with sudo config (optional):
+#     nopasswd  — boolean, allow passwordless sudo
+#     commands  — list of allowed commands (omit for ALL)
+#     runas     — user to run as (default: ALL)
+#   state       — present / absent (default: present)
+#   targets     — list of Ansible group names, hostnames, or 'all'
+#   options     — dict with account/password expiration settings (optional):
+#     expires             — epoch expiration time (-1 to never expire account)
+#     password_expire_min — minimum days between password changes
+#     password_expire_max — maximum days between password changes
+#
+# Per-user customization fields:
+#   bashrc_block — multiline string appended to ~/.bashrc
+#   aliases      — dict of alias_name: command (→ ~/.bash_aliases)
+#   dotfiles     — list of {src, dest, mode} for static files
+#   provision    — list of task files to include (relative to tasks/)
+#
+# Provision-specific fields (used by provision task files):
+#   omb_theme    — oh-my-bash theme name
+#   omb_plugins  — list of oh-my-bash plugins
+#   packages     — list of packages to install for this user
+#   dotfiles_repo — git URL to clone into ~/.dotfiles
+#
+# Example:
+#
+# username: jdoe
+# uid: 2000
+# comment: "John Doe"
+# group: developers
+# groups:
+#   - docker
+# sudo: true
+# sudoers:
+#   nopasswd: true
+# shell: /bin/bash
+# options:
+#   expires: -1
+#   password_expire_min: 0
+#   password_expire_max: 99999
+# ssh_keys:
+#   - "ssh-ed25519 AAAAC3... jdoe@laptop"
+# aliases:
+#   ll: "ls -lah --color=auto"
+#   gs: "git status"
+# bashrc_block: |
+#   export EDITOR=vim
+#   export PATH=$HOME/.local/bin:$PATH
+# provision:
+#   - provision/oh-my-bash.yaml
+# omb_theme: powerline
+# targets:
+#   - webservers
+#   - devboxes

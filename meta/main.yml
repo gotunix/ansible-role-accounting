@@ -1,0 +1,12 @@
+galaxy_info:
+  author: gotunix
+  description: Ansible role for accounting
+  company: gotunix
+  license: MIT
+  min_ansible_version: "2.9"
+  platforms:
+    - name: Generic
+      versions:
+        - all
+  galaxy_tags: []
+dependencies: []

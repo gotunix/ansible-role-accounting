@@ -1,0 +1,120 @@
+---
+# accounting role — task orchestrator
+
+# ---- Load all definitions (always runs) ----
+
+- name: Load definitions  # noqa: run-once[task]
+  tags: always
+  become: false
+  block:
+    - name: Discover per-group var files
+      ansible.builtin.find:
+        paths: "{{ accounting_groups_var_dir }}"
+        patterns: "*.yml,*.yaml"
+        file_type: file
+      delegate_to: localhost
+      register: accounting_group_files
+
+    - name: Load per-group var files
+      ansible.builtin.include_vars:
+        file: "{{ item.path }}"
+        name: "_group_{{ item.path | basename | regex_replace('\\.(yml|yaml)$', '') }}"
+      loop: "{{ accounting_group_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Initialize accounting_managed_groups
+      ansible.builtin.set_fact:
+        accounting_managed_groups: []
+
+    - name: Build accounting_managed_groups from loaded var files
+      ansible.builtin.set_fact:
+        accounting_managed_groups: >-
+          {{ accounting_managed_groups +
+             [lookup('vars', '_group_' + (item.path | basename | regex_replace('\.(yml|yaml)$', '')))] }}
+      loop: "{{ accounting_group_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Append extra groups injected via vars
+      ansible.builtin.set_fact:
+        accounting_managed_groups: "{{ accounting_managed_groups + accounting_extra_groups }}"
+      when: accounting_extra_groups is defined
+
+    - name: Discover per-user var files
+      ansible.builtin.find:
+        paths: "{{ accounting_users_var_dir }}"
+        patterns: "*.yml,*.yaml"
+        file_type: file
+      delegate_to: localhost
+      register: accounting_user_files
+
+    - name: Load per-user var files
+      ansible.builtin.include_vars:
+        file: "{{ item.path }}"
+        name: "_user_{{ item.path | basename | regex_replace('\\.(yml|yaml)$', '') }}"
+      loop: "{{ accounting_user_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Initialize accounting_managed_users
+      ansible.builtin.set_fact:
+        accounting_managed_users: []
+
+    - name: Build accounting_managed_users from loaded var files
+      ansible.builtin.set_fact:
+        accounting_managed_users: >-
+          {{ accounting_managed_users +
+             [lookup('vars', '_user_' + (item.path | basename | regex_replace('\.(yml|yaml)$', '')))] }}
+      loop: "{{ accounting_user_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Append extra users injected via vars
+      ansible.builtin.set_fact:
+        accounting_managed_users: "{{ accounting_managed_users + accounting_extra_users }}"
+      when: accounting_extra_users is defined
+
+    - name: Filter to a single group if groupname is provided
+      ansible.builtin.set_fact:
+        accounting_managed_groups: "{{ accounting_managed_groups | selectattr('group_name', 'equalto', groupname) | list }}"
+      when: groupname is defined
+
+    - name: Filter to a single user if username is provided
+      ansible.builtin.set_fact:
+        accounting_managed_users: "{{ accounting_managed_users | selectattr('username', 'equalto', username) | list }}"
+      when: username is defined
+
+    - name: Override targets for the filtered user if 'targets' is provided
+      ansible.builtin.set_fact:
+        accounting_managed_users: >-
+          {% set _users = [] %}
+          {% for u in accounting_managed_users %}
+          {% set _ = _users.append(u | combine({'targets': [targets] if targets is string else targets})) %}
+          {% endfor %}
+          {{ _users }}
+      when: username is defined and targets is defined
+
+    - name: Override state for the filtered user if 'state' is provided
+      ansible.builtin.set_fact:
+        accounting_managed_users: >-
+          {% set _users = [] %}
+          {% for u in accounting_managed_users %}
+          {% set _ = _users.append(u | combine({'state': state})) %}
+          {% endfor %}
+          {{ _users }}
+      when: username is defined and state is defined
+
+# ---- Run management tasks ----
+
+- name: Manage groups
+  ansible.builtin.import_tasks: groups.yaml
+  tags: groups
+
+- name: Manage users
+  ansible.builtin.import_tasks: users.yaml
+  tags: users
+
+- name: Manage sudoers
+  ansible.builtin.import_tasks: sudoers.yaml
+  tags: sudo

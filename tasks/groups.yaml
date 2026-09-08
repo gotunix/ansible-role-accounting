@@ -1,0 +1,29 @@
+---
+# Manage groups — filter by targets, then create or remove
+
+# A group matches this host if its targets list contains:
+#   - 'all'
+#   - any of the host's Ansible group names
+#   - the host's inventory_hostname
+
+- name: Initialize active groups list
+  ansible.builtin.set_fact:
+    accounting_active_groups: []
+
+- name: Identify groups targeting this host
+  ansible.builtin.set_fact:
+    accounting_active_groups: "{{ accounting_active_groups + [item] }}"
+  loop: "{{ accounting_managed_groups | default([]) }}"
+  when: "'all' in (item.targets | default([])) or ((item.targets | default([])) | intersect(group_names + [inventory_hostname])) | length > 0"
+  loop_control:
+    label: "{{ item.group_name | default('unknown') }}"
+
+- name: Create / manage groups
+  ansible.builtin.group:
+    name: "{{ item.group_name }}"
+    gid: "{{ item.gid | default(omit) }}"
+    state: "{{ item.state | default('present') }}"
+    system: "{{ item.system | default(false) }}"
+  loop: "{{ accounting_active_groups }}"
+  loop_control:
+    label: "{{ item.group_name }}"

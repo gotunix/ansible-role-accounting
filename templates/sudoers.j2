@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+# Sudoers file for {{ item.username }}
+{% if item.sudoers.commands is defined %}
+{% for cmd in item.sudoers.commands %}
+{{ item.username }} ALL=({{ item.sudoers.runas | default('ALL') }}) {{ 'NOPASSWD: ' if item.sudoers.nopasswd | default(false) else '' }}{{ cmd }}
+{% endfor %}
+{% else %}
+{{ item.username }} ALL=({{ item.sudoers.runas | default('ALL') }}) {{ 'NOPASSWD: ' if item.sudoers.nopasswd | default(false) else '' }}ALL
+{% endif %}

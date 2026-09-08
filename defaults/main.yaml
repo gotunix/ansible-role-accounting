@@ -1,0 +1,36 @@
+---
+# -----------------------------------------------------------
+# accounting role — default variables
+# -----------------------------------------------------------
+
+# --- Definition directories ---
+
+# Per-group directory — one .yaml file per group
+accounting_groups_var_dir: "{{ role_path }}/vars/groups"
+
+# Per-user directory — one .yaml file per user
+accounting_users_var_dir: "{{ role_path }}/vars/users"
+
+# --- General settings ---
+
+# Default shell for new users (overridable per-user)
+accounting_default_shell: /bin/bash
+
+# Default home base directory
+accounting_home_base: /home
+
+# Whether to create home directories
+accounting_create_home: true
+
+# Default groups every user should be in (in addition to per-user groups)
+accounting_default_groups: []
+
+# Whether to remove users marked state: absent (and optionally their home)
+accounting_remove_absent: true
+accounting_remove_home: false
+
+# Default options applied to all users to prevent passwords from expiring
+accounting_default_options:
+  expires: -1
+  password_expire_min: 0
+  password_expire_max: 99999

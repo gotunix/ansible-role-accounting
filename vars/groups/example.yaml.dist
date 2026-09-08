@@ -1,0 +1,25 @@
+# -----------------------------------------------------------
+# Example group definition
+# -----------------------------------------------------------
+# Place one .yaml file per group in this directory.
+# Each file defines a single group (no list wrapper needed).
+#
+# Available fields:
+#   group_name — group name (required)
+#   gid      — numeric GID (optional)
+#   state    — present / absent (default: present)
+#   system   — boolean, create as system group (optional)
+#   targets  — list of Ansible group names, hostnames, or 'all'
+#
+# A group is applied to a host when ANY target matches:
+#   - 'all'
+#   - an Ansible group the host belongs to (group_names)
+#   - the host's inventory_hostname
+#
+# Example:
+#
+# group_name: developers
+# gid: 2000
+# targets:
+#   - webservers
+#   - devboxes

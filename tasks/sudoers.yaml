@@ -1,0 +1,32 @@
+---
+# Deploy per-user sudoers files to /etc/sudoers.d/
+#
+# Supports two modes per user:
+#   1. Full sudo:        sudoers: { nopasswd: true }
+#   2. Command-restrict: sudoers: { commands: ["/usr/bin/systemctl restart *", "/usr/bin/journalctl"] }
+
+- name: Ensure sudo is installed
+  ansible.builtin.package:
+    name: sudo
+    state: present
+
+- name: Deploy sudoers files
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "/etc/sudoers.d/{{ item.username | replace('.', '_') }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  loop: "{{ accounting_present_users | selectattr('sudoers', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: Remove sudoers files for absent users
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/{{ item.username | replace('.', '_') }}"
+    state: absent
+  loop: "{{ accounting_active_users | selectattr('state', 'defined') | selectattr('state', 'equalto', 'absent') | list }}"
+  loop_control:
+    label: "{{ item.username }}"
+  when: accounting_remove_absent

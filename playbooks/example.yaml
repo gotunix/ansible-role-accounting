@@ -1,0 +1,12 @@
+---
+- name: Apply accounting role
+  hosts: all
+  become: true
+
+  # Ensure you run this playbook with the appropriate tags if needed:
+  #   ansible-playbook playbooks/example.yaml --tags users
+  # Or filter by a specific user:
+  #   ansible-playbook playbooks/example.yaml -e username=bob
+
+  roles:
+    - role: accounting

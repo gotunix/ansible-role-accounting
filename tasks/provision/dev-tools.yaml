@@ -1,0 +1,27 @@
+---
+# Per-user provision: Install common dev tools
+#
+# The full user dict is available as '_user'.
+
+- name: "Install user-requested packages — {{ _user.username }}"
+  ansible.builtin.package:
+    name: "{{ _user.packages }}"
+    state: present
+  when: _user.packages is defined
+
+- name: "Clone dotfiles repo — {{ _user.username }}"
+  ansible.builtin.git:
+    repo: "{{ _user.dotfiles_repo }}"
+    dest: "{{ _user.home | default('/home/' + _user.username) }}/.dotfiles"
+    version: "{{ _user.dotfiles_branch | default('main') }}"
+  become: true
+  become_user: "{{ _user.username }}"
+  when: _user.dotfiles_repo is defined
+
+- name: "Run dotfiles install script — {{ _user.username }}"
+  ansible.builtin.command:
+    cmd: "{{ _user.home | default('/home/' + _user.username) }}/.dotfiles/install.sh"
+    creates: "{{ _user.home | default('/home/' + _user.username) }}/.dotfiles/.installed"
+  become: true
+  become_user: "{{ _user.username }}"
+  when: _user.dotfiles_repo is defined

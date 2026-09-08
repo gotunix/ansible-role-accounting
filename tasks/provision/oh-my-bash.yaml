@@ -1,0 +1,42 @@
+---
+# Per-user provision: Install & configure oh-my-bash
+#
+# This file is included via the 'provision' field on a user definition.
+# The full user dict is available as '_user'.
+
+- name: "Check if oh-my-bash is installed — {{ _user.username }}"
+  ansible.builtin.stat:
+    path: "{{ _user.home | default('/home/' + _user.username) }}/.oh-my-bash"
+  register: accounting_omb_dir
+
+- name: "Install oh-my-bash — {{ _user.username }}"
+  ansible.builtin.shell: |
+    bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh)"
+  args:
+    creates: "{{ _user.home | default('/home/' + _user.username) }}/.oh-my-bash"
+  environment:
+    RUNZSH: "no"
+    CHSH: "no"
+  become: true
+  become_user: "{{ _user.username }}"
+  register: accounting_omb_install
+  failed_when:
+    - accounting_omb_install.rc != 0
+    - "'already exists' not in (accounting_omb_install.stderr | default(''))"
+  when: not accounting_omb_dir.stat.exists
+
+- name: "Set oh-my-bash theme — {{ _user.username }}"
+  ansible.builtin.lineinfile:
+    path: "{{ _user.home | default('/home/' + _user.username) }}/.bashrc"
+    regexp: '^OSH_THEME='
+    line: 'OSH_THEME="{{ _user.omb_theme | default("powerline") }}"'
+    owner: "{{ _user.username }}"
+  when: _user.omb_theme is defined or true
+
+- name: "Set oh-my-bash plugins — {{ _user.username }}"
+  ansible.builtin.lineinfile:
+    path: "{{ _user.home | default('/home/' + _user.username) }}/.bashrc"
+    regexp: '^plugins=\('
+    line: 'plugins=({{ _user.omb_plugins | default(["git", "bashmarks"]) | join(" ") }})'
+    owner: "{{ _user.username }}"
+  when: _user.omb_plugins is defined

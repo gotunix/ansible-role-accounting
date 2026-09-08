@@ -1,0 +1,174 @@
+---
+# Manage users — filter by targets, create/remove, deploy SSH keys, provision
+
+# A user matches this host if its targets list contains:
+#   - 'all'
+#   - any of the host's Ansible group names
+#   - the host's inventory_hostname
+
+- name: Initialize active users list
+  ansible.builtin.set_fact:
+    accounting_active_users: []
+
+- name: Identify users targeting this host
+  ansible.builtin.set_fact:
+    accounting_active_users: "{{ accounting_active_users + [item] }}"
+  loop: "{{ accounting_managed_users | default([]) }}"
+  when: "'all' in (item.targets | default([])) or ((item.targets | default([])) | intersect(group_names + [inventory_hostname])) | length > 0"
+  loop_control:
+    label: "{{ item.username | default('unknown') }}"
+
+# Build the present-user list once for reuse
+- name: Build present users list
+  ansible.builtin.set_fact:
+    accounting_present_users: >-
+      {{ accounting_active_users | selectattr('state', 'undefined') | list +
+         accounting_active_users | selectattr('state', 'defined') |
+         selectattr('state', 'equalto', 'present') | list }}
+
+# --- Present users ---
+
+- name: Gather existing groups from server
+  ansible.builtin.getent:
+    database: group
+  register: accounting_getent_group
+
+- name: Build existing groups list
+  ansible.builtin.set_fact:
+    accounting_existing_groups: "{{ ansible_facts.getent_group | default({}) | list }}"
+
+- name: Ensure primary groups exist
+  ansible.builtin.group:
+    name: "{{ item.group }}"
+    gid: "{{ item.gid | default(omit) }}"
+    state: present
+  loop: "{{ accounting_present_users | selectattr('group', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.group }}"
+
+- name: Create / manage users
+  ansible.builtin.user:
+    name: "{{ item.username }}"
+    uid: "{{ item.uid | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+    groups: "{{ ((item.groups | default([])) + (accounting_default_groups)) | intersect(accounting_existing_groups) }}"
+    append: false
+    shell: "{{ item.shell | default(accounting_default_shell) }}"
+    home: "{{ item.home | default(accounting_home_base + '/' + item.username) }}"
+    comment: "{{ item.comment | default(omit) }}"
+    password: "{{ item.password | default(lookup('password', '/dev/null length=32 chars=ascii_letters,digits,punctuation') | password_hash('sha512')) }}"
+    update_password: "{{ 'always' if update_password | default(false) | bool else 'on_create' }}"
+    system: "{{ item.system | default(false) }}"
+    expires: >-
+      {{ (item.options | default({})).expires | default(accounting_default_options.expires) 
+         if not (ansible_os_family == 'RedHat' and ansible_distribution_major_version | int <= 7) 
+         else omit }}
+    password_expire_min: >-
+      {{ (item.options | default({})).password_expire_min | default(accounting_default_options.password_expire_min) 
+         if not (ansible_os_family == 'RedHat' and ansible_distribution_major_version | int <= 7) 
+         else omit }}
+    password_expire_max: >-
+      {{ (item.options | default({})).password_expire_max | default(accounting_default_options.password_expire_max) 
+         if not (ansible_os_family == 'RedHat' and ansible_distribution_major_version | int <= 7) 
+         else omit }}
+    create_home: "{{ accounting_create_home }}"
+    state: present
+#  loop: "{{ accounting_present_users
+#           | rejectattr('manage_account', 'defined')
+#           | list + accounting_present_users
+#           | selectattr('manage_account', 'defined')
+#           | selectattr('manage_account', 'equalto', true)
+#           | list }}"
+  loop: "{{ accounting_present_users }}"
+  when: item.manage_account | default(true) | bool
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: Deploy SSH authorized keys
+  ansible.posix.authorized_key:
+    user: "{{ item.username }}"
+    key: "{{ item.ssh_keys | join('\n') }}"
+    state: present
+    exclusive: true
+  loop: "{{ accounting_present_users | selectattr('ssh_keys', 'defined') | rejectattr('ssh_keys', 'none') | rejectattr('ssh_keys', 'equalto', []) | list }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: Remove authorized_keys for users without ssh_keys
+  ansible.builtin.file:
+    path: "{{ item.home | default(accounting_home_base + '/' + item.username) }}/.ssh/authorized_keys"
+    state: absent
+#  loop: >-
+#    {{ accounting_present_users | rejectattr('ssh_keys', 'defined') | list +
+#       accounting_present_users | selectattr('ssh_keys', 'defined') |
+#       selectattr('ssh_keys', 'none') | list +
+#       accounting_present_users | selectattr('ssh_keys', 'defined') |
+#       selectattr('ssh_keys', 'equalto', []) | list }}
+  loop: "{{ accounting_present_users }}"
+  when: item.ssh_keys is not defined or not item.ssh_keys
+  loop_control:
+    label: "{{ item.username }}"
+
+# --- Per-user provision tasks (run BEFORE customizations so installers ---
+# --- like oh-my-bash don't overwrite bashrc blocks)                    ---
+
+- name: Run per-user provision tasks
+  ansible.builtin.include_tasks:
+    file: "{{ _provision_entry.1 }}"
+  vars:
+    _user: "{{ _provision_entry.0 }}"
+  loop: "{{ accounting_present_users | subelements('provision', skip_missing=True) }}"
+  loop_control:
+    label: "{{ _provision_entry.0.username }} → {{ _provision_entry.1 }}"
+    loop_var: _provision_entry
+
+# --- Per-user customizations (after provision) ---
+
+- name: Deploy custom bashrc block
+  ansible.builtin.blockinfile:
+    path: "{{ item.home | default(accounting_home_base + '/' + item.username) }}/.bashrc"
+    block: "{{ item.bashrc_block }}"
+    marker: "# {mark} ANSIBLE MANAGED — {{ item.username }}"
+    create: true
+    owner: "{{ item.username }}"
+    mode: "0644"
+  loop: "{{ accounting_present_users | selectattr('bashrc_block', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: Deploy custom aliases
+  ansible.builtin.blockinfile:
+    path: "{{ item.home | default(accounting_home_base + '/' + item.username) }}/.bash_aliases"
+    block: |
+      {% for alias_name, alias_cmd in item.aliases.items() %}
+      alias {{ alias_name }}='{{ alias_cmd }}'
+      {% endfor %}
+    marker: "# {mark} ANSIBLE MANAGED — {{ item.username }}"
+    create: true
+    owner: "{{ item.username }}"
+    mode: "0644"
+  loop: "{{ accounting_present_users | selectattr('aliases', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: Deploy user dotfiles
+  ansible.builtin.copy:
+    src: "{{ item.1.src }}"
+    dest: "{{ item.0.home | default(accounting_home_base + '/' + item.0.username) }}/{{ item.1.dest }}"
+    owner: "{{ item.0.username }}"
+    mode: "{{ item.1.mode | default('0644') }}"
+  loop: "{{ accounting_present_users | subelements('dotfiles', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.username }} → {{ item.1.dest }}"
+
+# --- Absent users ---
+
+- name: Remove absent users
+  ansible.builtin.user:
+    name: "{{ item.username }}"
+    state: absent
+    remove: "{{ accounting_remove_home }}"
+  loop: "{{ accounting_active_users | selectattr('state', 'defined') | selectattr('state', 'equalto', 'absent') | list }}"
+  loop_control:
+    label: "{{ item.username }}"
+  when: accounting_remove_absent

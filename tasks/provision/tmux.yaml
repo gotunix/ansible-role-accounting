@@ -1,0 +1,39 @@
+---
+- name: Ensure tmux is installed
+  ansible.builtin.package:
+    name: tmux
+    state: present
+
+# path: "{{ _user.home | default('/home/' + _user.username) }}/.oh-my-bash"
+- name: Create directories
+  ansible.builtin.file:
+    name: "{{ _user.home | default('/home/' + _user.username) }}/{{ dir_item }}"
+    state: directory
+    owner: "{{ _user.username }}"
+    group: "{{ _user.username }}"
+    mode: "0700"
+  loop:
+    - .tmux
+    - .tmux/plugins
+  loop_control:
+    loop_var: dir_item
+
+- name: Download tmux plugins
+  ansible.builtin.git:
+    repo: "{{ plugin_item.repo }}"
+    version: HEAD  # noqa: latest
+    dest: "{{ _user.home | default('/home/' + _user.username) }}/.tmux/plugins/{{ plugin_item.name }}"
+  loop:
+    - { name: "tpm", repo: "https://github.com/tmux-plugins/tpm.git" }
+    - { name: "tmux-sensible", repo: "https://github.com/tmux-plugins/tmux-sensible.git" }
+    - { name: "catppuccin-tmux", repo: "https://github.com/catppuccin/tmux.git"}
+  loop_control:
+    loop_var: plugin_item
+
+- name: Install .tmux.conf
+  ansible.builtin.copy:
+    src: files/provision/tmux.conf
+    dest: "{{ _user.home | default('/home/' + _user.username) }}/.tmux.conf"
+    owner: "{{ _user.username }}"
+    group: "{{ _user.username }}"
+    mode: "0644"
